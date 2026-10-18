@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  VIEWER
+  MEMBER
+  LEAD
+  ADMIN
+}
+
+enum ItemType {
+  INCIDENT
+  CUSTOMER_ISSUE
+  PAYMENT
+  COMPLIANCE
+  TASK
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum Status {
+  OPEN
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  RESOLVED
+  CLOSED
+}
+
+enum EventType {
+  CREATED
+  STATUS_CHANGE
+  ASSIGNEE_CHANGE
+  PRIORITY_CHANGE
+  FIELDS_UPDATED
+  COMMENT
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  email        String       @unique
+  name         String
+  passwordHash String
+  memberships  Membership[]
+  assigned     WorkItem[]   @relation("assignee")
+  created      WorkItem[]   @relation("creator")
+  activities   Activity[]
+}
+
+model Team {
+  id          Int          @id @default(autoincrement())
+  name        String       @unique
+  memberships Membership[]
+  items       WorkItem[]
+}
+
+// one row per (user, team) with a role per team
+model Membership {
+  userId Int
+  teamId Int
+  role   Role
+  user   User @relation(fields: [userId], references: [id])
+  team   Team @relation(fields: [teamId], references: [id])
+
+  @@id([userId, teamId])
+}
+
+model WorkItem {
+  id          Int        @id @default(autoincrement())
+  title       String
+  description String     @default("")
+  type        ItemType
+  priority    Priority   @default(MEDIUM)
+  status      Status     @default(OPEN)
+  teamId      Int
+  assigneeId  Int?
+  createdById Int
+  dueDate     DateTime?
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  team        Team       @relation(fields: [teamId], references: [id])
+  assignee    User?      @relation("assignee", fields: [assigneeId], references: [id])
+  createdBy   User       @relation("creator", fields: [createdById], references: [id])
+  activities  Activity[]
+
+  @@index([teamId, status])
+  @@index([assigneeId, status])
+  @@index([priority, status])
+}
+
+// append-only: the API has no update/delete for this table
+model Activity {
+  id         Int       @id @default(autoincrement())
+  workItemId Int
+  actorId    Int
+  type       EventType
+  data       Json      @default("{}")
+  createdAt  DateTime  @default(now())
+  workItem   WorkItem  @relation(fields: [workItemId], references: [id], onDelete: Cascade)
+  actor      User      @relation(fields: [actorId], references: [id])
+
+  @@index([workItemId, createdAt])
+}
